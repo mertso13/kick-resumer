@@ -6,7 +6,7 @@ A lightweight Firefox extension that automatically remembers and resumes your pl
 
 ### From Firefox Add-ons
 
-[Kick Resumer](https://addons.mozilla.org/…/kick-resumer)
+[Kick Resumer](https://addons.mozilla.org/en-US/firefox/kick-resumer/)
 
 ### Manual Installation
 
