@@ -35,14 +35,17 @@ function build(target) {
   console.log(`Building target: ${target}...`);
   const targetDir = path.join(DIST_DIR, target);
 
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  } else {
-    fs.rmSync(targetDir, { recursive: true, force: true });
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
+  cleanDir(targetDir);
 
   copyRecursiveSync(SRC_DIR, targetDir);
+
+  const rootDir = path.join(__dirname, "..");
+  ["LICENSE", "README.md"].forEach((file) => {
+    const filePath = path.join(rootDir, file);
+    if (fs.existsSync(filePath)) {
+      fs.copyFileSync(filePath, path.join(targetDir, file));
+    }
+  });
 
   const commonManifest = JSON.parse(
     fs.readFileSync(path.join(MANIFESTS_DIR, "common.json"), "utf8")
@@ -69,10 +72,8 @@ function build(target) {
   console.log(`Successfully built ${target} at ${targetDir}`);
 }
 
-if (fs.existsSync(DIST_DIR)) {
-  fs.rmSync(DIST_DIR, { recursive: true, force: true });
-}
-fs.mkdirSync(DIST_DIR);
+cleanDir(DIST_DIR);
 
 build("firefox");
+
 build("chrome");
