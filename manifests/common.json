@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kick Resumer",
-  "version": "1.0",
+  "version": "1.0.0",
   "description": "Automatically resumes Kick.com VODs from where you left off.",
   "permissions": ["storage"],
   "host_permissions": ["*://kick.com/*"],
@@ -13,16 +13,7 @@
   "content_scripts": [
     {
       "matches": ["*://kick.com/*"],
-      "js": ["content.js"],
       "run_at": "document_idle"
     }
-  ],
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "kick-resumer@local",
-      "data_collection_permissions": {
-        "required": ["none"]
-      }
-    }
-  }
+  ]
 }

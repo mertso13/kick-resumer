@@ -1,14 +1,14 @@
 const LOG_PREFIX = "[Kick Resumer]";
 
 const CONFIG = {
-  CHECK_INTERVAL_MS: 1000,      // For URL/Video element changes
+  CHECK_INTERVAL_MS: 1000,    // For URL/Video element changes
   SAVE_INTERVAL_MS: 5000,
   SAVE_THROTTLE_MS: 1000,
-  ENFORCER_INTERVAL_MS: 250,    // How often the enforcer checks for the reset bug
-  ENFORCER_MAX_ATTEMPTS: 12,    // Total enforcer duration (~3 seconds)
-  RESET_THRESHOLD_S: 5,         // If time jumps below this, we assume the reset bug happened
-  MIN_TIME_FOR_ENFORCE_S: 10,   // Only enforce if the target was further than 10s in
-  VIDEO_END_BUFFER_S: 0.5,      // Stay slightly before the absolute end to avoid player glitches
+  ENFORCER_INTERVAL_MS: 250,  // How often the enforcer checks for the reset bug
+  ENFORCER_MAX_ATTEMPTS: 12,  // Total enforcer duration (~3 seconds)
+  RESET_THRESHOLD_S: 5,       // If time jumps below this, we assume the reset bug happened
+  MIN_TIME_FOR_ENFORCE_S: 10, // Only enforce if the target was further than 10s in
+  VIDEO_END_BUFFER_S: 0.5,    // Stay slightly before the absolute end to avoid player glitches
 };
 
 let currentVideoId = null;
@@ -100,13 +100,13 @@ async function initializeVideo(videoId, video) {
     const result = await browser.storage.local.get(videoId);
     savedTime = result[videoId];
   } catch (error) {
-    console.error(`${LOG_PREFIX} Error reading storage:`, error);
+    console.log(`${LOG_PREFIX} Could not read storage for ${videoId}:`, error);
   }
 
   if (savedTime && typeof savedTime === "number") {
     const performRestore = () => {
-      const seekTarget = video.duration 
-        ? Math.min(savedTime, video.duration - CONFIG.VIDEO_END_BUFFER_S) 
+      const seekTarget = video.duration
+        ? Math.min(savedTime, video.duration - CONFIG.VIDEO_END_BUFFER_S)
         : savedTime;
       performSeek(video, seekTarget);
     };
@@ -131,7 +131,7 @@ function performSeek(video, targetTime) {
     newUrl.searchParams.set("t", Math.floor(targetTime));
     window.history.replaceState(null, "", newUrl.toString());
   } catch (e) {
-    console.error(`${LOG_PREFIX} Failed to update URL state`, e);
+    console.log(`${LOG_PREFIX} Failed to update URL state`, e);
   }
 
   if (enforcerInterval) clearInterval(enforcerInterval);
@@ -159,7 +159,10 @@ function performSeek(video, targetTime) {
       return;
     }
 
-    if (targetTime > CONFIG.MIN_TIME_FOR_ENFORCE_S && video.currentTime < CONFIG.RESET_THRESHOLD_S) {
+    if (
+      targetTime > CONFIG.MIN_TIME_FOR_ENFORCE_S &&
+      video.currentTime < CONFIG.RESET_THRESHOLD_S
+    ) {
       video.currentTime = targetTime;
     }
 
@@ -207,5 +210,9 @@ function setupSaver(videoId, video) {
 
 function saveProgress(videoId, time) {
   lastSaveTime = Date.now();
-  browser.storage.local.set({ [videoId]: time });
+  try {
+    browser.storage.local.set({ [videoId]: time });
+  } catch (e) {
+    console.log(`${LOG_PREFIX} Failed to save progress for ${videoId}`, e);
+  }
 }
