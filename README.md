@@ -24,7 +24,7 @@ The output will be in the `dist/firefox` and `dist/chrome` directories.
 
 #### From Firefox Add-ons
 
-[Kick Resumer](https://addons.mozilla.org/en-US/firefox/addon/kick-resumer/)
+[Kick Resumer - Firefox](https://addons.mozilla.org/en-US/firefox/addon/kick-resumer/)
 
 #### Manual Installation
 
@@ -34,6 +34,9 @@ The output will be in the `dist/firefox` and `dist/chrome` directories.
 4.  Select the `manifest.json` file from the project folder.
 
 ### Chrome
+
+#### From Chrome Web Store
+[Kick Resumer - Chrome](https://chromewebstore.google.com/detail/kick-resumer/hcojicmdfemnlpncgefohmjinbnocinn)
 
 #### Manual Installation
 
