@@ -58,6 +58,18 @@ function checkUrlAndDom() {
   }
 }
 
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 function getVideoIdFromUrl() {
   const path = window.location.pathname;
   const match = path.match(/\/videos\/([a-zA-Z0-9-]+)/);
@@ -216,3 +228,146 @@ function saveProgress(videoId, time) {
     console.log(`${LOG_PREFIX} Failed to save progress for ${videoId}`, e);
   }
 }
+
+let watchedCache = {};
+let currentObserver = null;
+
+const debouncedProcessThumbnails = debounce(() => {
+  processThumbnails();
+}, 250);
+
+async function initWatchedCache() {
+  try {
+    const allData = await browser.storage.local.get(null);
+    watchedCache = allData;
+  } catch (e) {
+    console.log(`${LOG_PREFIX} Failed to load storage for UI injection`, e);
+  }
+}
+
+browser.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local") {
+    for (let [videoId, { newValue }] of Object.entries(changes)) {
+      if (newValue === undefined) {
+        delete watchedCache[videoId];
+      } else {
+        watchedCache[videoId] = newValue;
+      }
+    }
+  }
+});
+
+function parseDurationToSeconds(durationStr) {
+  if (!durationStr) return 0;
+
+  const parts = durationStr.trim().split(":").map(Number);
+
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+
+  return 0;
+}
+
+function startThumbnailObserver() {
+  currentObserver = new MutationObserver((mutations) => {
+    let shouldProcess = false;
+
+    for (const mutation of mutations) {
+      if (mutation.type !== "childList" || mutation.addedNodes.length === 0)
+        continue;
+
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+
+        const isVideoLink =
+          node.tagName === "A" &&
+          node.getAttribute("href")?.includes("/videos/");
+
+        const containsVideoLinks =
+          node.querySelector && node.querySelector('a[href*="/videos/"]');
+
+        if (isVideoLink || containsVideoLinks) {
+          shouldProcess = true;
+          break;
+        }
+      }
+
+      if (shouldProcess) break;
+    }
+
+    if (shouldProcess) {
+      debouncedProcessThumbnails();
+    }
+  });
+
+  const targetNode = document.body;
+
+  currentObserver.observe(targetNode, {
+    childList: true,
+    subtree: true,
+  });
+}
+
+function processThumbnails() {
+  const thumbnailLinks = document.querySelectorAll(
+    'a[href*="/videos/"]:not(.kick-resumer-processed)',
+  );
+
+  thumbnailLinks.forEach((linkElement) => {
+    linkElement.classList.add("kick-resumer-processed");
+
+    const href = linkElement.getAttribute("href");
+    const match = href.match(/\/videos\/([a-zA-Z0-9-]+)/);
+    if (!match) return;
+
+    const videoId = match[1];
+    const watchedSeconds = watchedCache[videoId];
+
+    if (watchedSeconds && watchedSeconds > 30) {
+      injectVisualFeedback(linkElement, watchedSeconds);
+    }
+  });
+}
+
+function injectVisualFeedback(linkElement, watchedSeconds) {
+  const durationElement = linkElement.querySelector(".top-1\\.5.left-1\\.5");
+  if (!durationElement) return;
+
+  const totalSeconds = parseDurationToSeconds(durationElement.textContent);
+  if (totalSeconds === 0) return;
+
+  let percentage = (watchedSeconds / totalSeconds) * 100;
+
+  if (percentage > 95) {
+    percentage = 100;
+  }
+
+  const imageWrapper = linkElement.querySelector("div.relative.h-full.w-full");
+
+  if (!imageWrapper) return;
+
+  const progressBar = document.createElement("div");
+  progressBar.style.cssText = `
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 4px;
+    width: ${percentage}%;
+    background-color: #53fc18;
+    z-index: 10;
+    pointer-events: none;
+    border-bottom-left-radius: 2px;
+    border-bottom-right-radius: 2px;
+    transition: width 0.3s ease;
+  `;
+
+  imageWrapper.appendChild(progressBar);
+}
+
+initWatchedCache().then(() => {
+  startThumbnailObserver();
+  processThumbnails();
+});
