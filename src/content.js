@@ -17,15 +17,13 @@ let saveInterval = null;
 let enforcerInterval = null;
 let isEnforcing = false;
 let lastSaveTime = 0;
+let watchedCache = {};
+let currentObserver = null;
 
 let activeEventListeners = {
   element: null,
   listeners: [],
 };
-
-setInterval(() => {
-  checkUrlAndDom();
-}, CONFIG.CHECK_INTERVAL_MS);
 
 function checkUrlAndDom() {
   const videoId = getVideoIdFromUrl();
@@ -229,33 +227,13 @@ function saveProgress(videoId, time) {
   }
 }
 
-let watchedCache = {};
-let currentObserver = null;
+const debouncedCheck = debounce(() => {
+  checkUrlAndDom();
+}, 500);
 
 const debouncedProcessThumbnails = debounce(() => {
   processThumbnails();
 }, 250);
-
-async function initWatchedCache() {
-  try {
-    const allData = await browser.storage.local.get(null);
-    watchedCache = allData;
-  } catch (e) {
-    console.log(`${LOG_PREFIX} Failed to load storage for UI injection`, e);
-  }
-}
-
-browser.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local") {
-    for (let [videoId, { newValue }] of Object.entries(changes)) {
-      if (newValue === undefined) {
-        delete watchedCache[videoId];
-      } else {
-        watchedCache[videoId] = newValue;
-      }
-    }
-  }
-});
 
 function parseDurationToSeconds(durationStr) {
   if (!durationStr) return 0;
@@ -271,45 +249,35 @@ function parseDurationToSeconds(durationStr) {
   return 0;
 }
 
-function startThumbnailObserver() {
+function startObserver() {
   currentObserver = new MutationObserver((mutations) => {
-    let shouldProcess = false;
+    let shouldProcessThumbnails = false;
+    let somethingAdded = false;
 
     for (const mutation of mutations) {
-      if (mutation.type !== "childList" || mutation.addedNodes.length === 0)
-        continue;
-
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType !== Node.ELEMENT_NODE) continue;
-
-        const isVideoLink =
-          node.tagName === "A" &&
-          node.getAttribute("href")?.includes("/videos/");
-
-        const containsVideoLinks =
-          node.querySelector && node.querySelector('a[href*="/videos/"]');
-
-        if (isVideoLink || containsVideoLinks) {
-          shouldProcess = true;
-          break;
+      if (mutation.addedNodes.length > 0) {
+        somethingAdded = true;
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          
+          if (node.tagName === "A" && node.getAttribute("href")?.includes("/videos/")) {
+            shouldProcessThumbnails = true;
+          } else if (node.querySelector?.('a[href*="/videos/"]')) {
+            shouldProcessThumbnails = true;
+          }
         }
       }
-
-      if (shouldProcess) break;
     }
 
-    if (shouldProcess) {
-      debouncedProcessThumbnails();
-    }
+    if (shouldProcessThumbnails) debouncedProcessThumbnails();
+    if (somethingAdded) debouncedCheck();
   });
 
-  const targetNode = document.body;
+  currentObserver.observe(document.body, { childList: true, subtree: true });
 
-  currentObserver.observe(targetNode, {
-    childList: true,
-    subtree: true,
-  });
+  window.addEventListener("popstate", debouncedCheck);
 }
+
 
 function processThumbnails() {
   const thumbnailLinks = document.querySelectorAll(
@@ -367,7 +335,21 @@ function injectVisualFeedback(linkElement, watchedSeconds) {
   imageWrapper.appendChild(progressBar);
 }
 
-initWatchedCache().then(() => {
-  startThumbnailObserver();
+async function init() {
+  watchedCache = await browser.storage.local.get(null);
+  
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === "local") {
+      for (let [id, { newValue }] of Object.entries(changes)) {
+        if (!newValue) delete watchedCache[id];
+        else watchedCache[id] = newValue;
+      }
+    }
+  });
+
+  startObserver();
   processThumbnails();
-});
+  checkUrlAndDom();
+}
+
+init();
