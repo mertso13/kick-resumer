@@ -226,7 +226,9 @@ function setupSaver(videoId, video) {
 function saveProgress(videoId, time) {
   lastSaveTime = Date.now();
   try {
-    browser.storage.local.set({ [videoId]: time });
+    browser.storage.local.set({ [videoId]: time }).catch(e => {
+      console.log(`${LOG_PREFIX} Failed to save progress for ${videoId}`, e);
+    });
   } catch (e) {
     console.log(`${LOG_PREFIX} Failed to save progress for ${videoId}`, e);
   }
