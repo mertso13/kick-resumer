@@ -343,7 +343,13 @@ function injectVisualFeedback(linkElement, watchedSeconds) {
 }
 
 async function init() {
-  watchedCache = await browser.storage.local.get(null);
+  try {
+    watchedCache = await browser.storage.local.get(null);
+  } catch (e) {
+    console.error('${LOG_PREFIX} Init failed, using empty cache', e);
+    watchedCache = {};
+  }
+ 
   
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === "local") {
