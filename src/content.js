@@ -19,6 +19,7 @@ let isEnforcing = false;
 let lastSaveTime = 0;
 let watchedCache = {};
 let currentObserver = null;
+let initGeneration = 0;
 
 let activeEventListeners = {
   element: null,
@@ -75,6 +76,7 @@ function getVideoIdFromUrl() {
 }
 
 function cleanup() {
+  initGeneration++;
   currentVideoId = null;
   cleanupListeners();
   currentVideoElement = null;
@@ -105,6 +107,7 @@ function cleanupListeners() {
 }
 
 async function initializeVideo(videoId, video) {
+  const gen = ++initGeneration;
   let savedTime = 0;
   try {
     const result = await browser.storage.local.get(videoId);
@@ -112,6 +115,8 @@ async function initializeVideo(videoId, video) {
   } catch (error) {
     console.log(`${LOG_PREFIX} Could not read storage for ${videoId}:`, error);
   }
+
+  if (gen !== initGeneration) return;
 
   if (savedTime && typeof savedTime === "number") {
     const performRestore = () => {
