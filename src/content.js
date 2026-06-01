@@ -354,6 +354,14 @@ async function init() {
     }
   });
 
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && currentVideoElement && currentVideoId) {
+      if (currentVideoElement.currentTime >= CONFIG.RESET_THRESHOLD_S) {
+        saveProgress(currentVideoId, currentVideoElement.currentTime);
+      }
+    }
+  });
+
   startObserver();
   processThumbnails();
   checkUrlAndDom();
