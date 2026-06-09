@@ -9,6 +9,7 @@ const CONFIG = {
   RESET_THRESHOLD_S: 5,       // If time jumps below this, we assume the reset bug happened
   MIN_TIME_FOR_ENFORCE_S: 10, // Only enforce if the target was further than 10s in
   VIDEO_END_BUFFER_S: 0.5,    // Stay slightly before the absolute end to avoid player glitches
+  MAX_CACHE_DAYS: 30,         // Fallback age for entries without an expiresAt (from meta tag)
 };
 
 let currentVideoId = null;
@@ -69,6 +70,12 @@ function debounce(func, wait) {
   };
 }
 
+function getWatchTime(data) {
+  if (typeof data === "number") return data;
+  if (data && typeof data.time === "number") return data.time;
+  return 0;
+}
+
 function getVideoIdFromUrl() {
   const path = window.location.pathname;
   const match = path.match(/\/videos\/([a-zA-Z0-9-]+)/);
@@ -81,6 +88,7 @@ function cleanup() {
   cleanupListeners();
   currentVideoElement = null;
   isEnforcing = false;
+  currentVodExpiry = null;
 
   if (saveInterval) {
     clearInterval(saveInterval);
@@ -108,10 +116,28 @@ function cleanupListeners() {
 
 async function initializeVideo(videoId, video) {
   const gen = ++initGeneration;
+
+  const expiry = parseUnavailableAfter();
+  if (expiry && Date.now() > expiry) {
+    try {
+      await browser.storage.local.remove(videoId);
+    } catch (e) {
+      console.log(`${LOG_PREFIX} Failed to remove expired VOD ${videoId}`, e);
+    }
+    delete watchedCache[videoId];
+    console.log(`${LOG_PREFIX} VOD ${videoId} is unavailable, progress deleted`);
+    return;
+  }
+  currentVodExpiry = expiry;
   let savedTime = 0;
   try {
     const result = await browser.storage.local.get(videoId);
-    savedTime = result[videoId];
+    const data = result[videoId];
+    if (typeof data === "number") {
+      savedTime = data;
+    } else if (data && typeof data === "object") {
+      savedTime = data.time;
+    }
   } catch (error) {
     console.log(`${LOG_PREFIX} Could not read storage for ${videoId}:`, error);
   }
@@ -226,7 +252,9 @@ function setupSaver(videoId, video) {
 function saveProgress(videoId, time) {
   lastSaveTime = Date.now();
   try {
-    browser.storage.local.set({ [videoId]: time }).catch(e => {
+    const data = { time: time, updated: lastSaveTime };
+    if (currentVodExpiry) data.expiresAt = currentVodExpiry;
+    browser.storage.local.set({ [videoId]: data }).catch(e => {
       console.log(`${LOG_PREFIX} Failed to save progress for ${videoId}`, e);
     });
   } catch (e) {
@@ -254,6 +282,19 @@ function parseDurationToSeconds(durationStr) {
   }
 
   return 0;
+}
+
+let currentVodExpiry = null;
+
+function parseUnavailableAfter() {
+  const meta = document.querySelector('meta[name="robots"]');
+  if (!meta) return null;
+  const content = meta.getAttribute("content");
+  if (!content) return null;
+  const match = content.match(/unavailable_after:\s*(\d{4}-\d{2}-\d{2})/);
+  if (!match) return null;
+  const date = new Date(match[1] + "T00:00:00Z");
+  return isNaN(date.getTime()) ? null : date.getTime();
 }
 
 function startObserver() {
@@ -299,7 +340,10 @@ function processThumbnails() {
     if (!match) return;
 
     const videoId = match[1];
-    const watchedSeconds = watchedCache[videoId];
+    let watchedSeconds = 0;
+    if (watchedCache[videoId]) {
+      watchedSeconds = getWatchTime(watchedCache[videoId]);
+    }
 
     if (watchedSeconds && watchedSeconds > 30) {
       injectVisualFeedback(linkElement, watchedSeconds);
@@ -342,14 +386,60 @@ function injectVisualFeedback(linkElement, watchedSeconds) {
   imageWrapper.appendChild(progressBar);
 }
 
+async function cleanupCache() {
+  const now = Date.now();
+  const maxAgeMs = CONFIG.MAX_CACHE_DAYS * 24 * 60 * 60 * 1000;
+  const toDelete = [];
+  const migratedIds = [];
+
+  for (const [id, data] of Object.entries(watchedCache)) {
+    const watchTime = getWatchTime(data);
+    if (watchTime === 0) continue;
+
+    if (typeof data === "number") {
+      watchedCache[id] = { time: data, updated: now };
+      migratedIds.push(id);
+    } else if (data && typeof data === "object") {
+      if (typeof data.expiresAt === "number") {
+        if (now > data.expiresAt) toDelete.push(id);
+      } else if (typeof data.updated !== "number" || now - data.updated > maxAgeMs) {
+        toDelete.push(id);
+      }
+    }
+  }
+
+  if (toDelete.length > 0) {
+    console.log(`${LOG_PREFIX} Cleaning up ${toDelete.length} old VODs`);
+    try {
+      await browser.storage.local.remove(toDelete);
+      for (const id of toDelete) {
+        delete watchedCache[id];
+      }
+    } catch (e) {
+      console.log(`${LOG_PREFIX} Failed to clean up cache`, e);
+    }
+  }
+
+  if (migratedIds.length > 0) {
+    try {
+      const toSet = {};
+      for (const id of migratedIds) toSet[id] = watchedCache[id];
+      await browser.storage.local.set(toSet);
+    } catch (e) {
+      console.log(`${LOG_PREFIX} Failed to save migrated cache`, e);
+    }
+  }
+}
+
 async function init() {
   try {
     watchedCache = await browser.storage.local.get(null);
   } catch (e) {
-    console.error('${LOG_PREFIX} Init failed, using empty cache', e);
+    console.error(`${LOG_PREFIX} Init failed, using empty cache`, e);
     watchedCache = {};
   }
  
+  await cleanupCache();
   
   browser.storage.onChanged.addListener((changes, area) => {
     if (area === "local") {
