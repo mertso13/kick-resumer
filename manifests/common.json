@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kick Resumer",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Automatically resumes Kick.com VODs from where you left off.",
   "permissions": ["storage"],
   "host_permissions": ["*://kick.com/*"],
