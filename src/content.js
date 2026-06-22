@@ -1,7 +1,6 @@
 const LOG_PREFIX = "[Kick Resumer]";
 
 const CONFIG = {
-  CHECK_INTERVAL_MS: 1000,    // For URL/Video element changes
   SAVE_INTERVAL_MS: 5000,
   SAVE_THROTTLE_MS: 1000,
   ENFORCER_INTERVAL_MS: 250,  // How often the enforcer checks for the reset bug
