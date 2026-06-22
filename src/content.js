@@ -21,10 +21,7 @@ let watchedCache = {};
 let currentObserver = null;
 let initGeneration = 0;
 
-let activeEventListeners = {
-  element: null,
-  listeners: [],
-};
+let videoAbortController = null;
 
 function checkUrlAndDom() {
   const videoId = getVideoIdFromUrl();
@@ -100,17 +97,10 @@ function cleanup() {
 }
 
 function cleanupListeners() {
-  if (
-    activeEventListeners.element &&
-    activeEventListeners.listeners.length > 0
-  ) {
-    activeEventListeners.listeners.forEach(({ type, fn }) => {
-      try {
-        activeEventListeners.element.removeEventListener(type, fn);
-      } catch (e) {}
-    });
+  if (videoAbortController) {
+    videoAbortController.abort();
+    videoAbortController = null;
   }
-  activeEventListeners = { element: null, listeners: [] };
 }
 
 async function initializeVideo(videoId, video) {
@@ -178,18 +168,19 @@ function performSeek(video, targetTime) {
 
   let attempts = 0;
 
+  let enforcerAbortController = new AbortController();
+
   const killEnforcer = () => {
     if (enforcerInterval) {
       clearInterval(enforcerInterval);
       enforcerInterval = null;
     }
     isEnforcing = false;
-    document.removeEventListener("mousedown", killEnforcer, true);
-    document.removeEventListener("keydown", killEnforcer, true);
+    enforcerAbortController.abort();
   };
 
-  document.addEventListener("mousedown", killEnforcer, true);
-  document.addEventListener("keydown", killEnforcer, true);
+  document.addEventListener("mousedown", killEnforcer, { capture: true, signal: enforcerAbortController.signal });
+  document.addEventListener("keydown", killEnforcer, { capture: true, signal: enforcerAbortController.signal });
 
   enforcerInterval = setInterval(() => {
     attempts++;
@@ -238,14 +229,10 @@ function setupSaver(videoId, video) {
     saveProgress(videoId, video.currentTime);
   };
 
-  video.addEventListener("pause", eventSave);
-  video.addEventListener("seeked", eventSave);
+  videoAbortController = new AbortController();
 
-  activeEventListeners.element = video;
-  activeEventListeners.listeners.push(
-    { type: "pause", fn: eventSave },
-    { type: "seeked", fn: eventSave }
-  );
+  video.addEventListener("pause", eventSave, { signal: videoAbortController.signal });
+  video.addEventListener("seeked", eventSave, { signal: videoAbortController.signal });
 }
 
 function saveProgress(videoId, time) {
