@@ -418,6 +418,9 @@ async function cleanupCache() {
 }
 
 async function init() {
+  if (window.__kickResumerInitialized) return;
+  window.__kickResumerInitialized = true;
+
   try {
     watchedCache = await browser.storage.local.get(null);
   } catch (e) {
