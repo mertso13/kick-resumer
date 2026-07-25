@@ -74,7 +74,17 @@ function checkUrlAndDom() {
     }
 
     if (!currentVideoElement) {
-      const video = document.querySelector("video");
+      const videos = Array.from(document.querySelectorAll("video"));
+      let video = null;
+      let maxArea = 0;
+      for (const v of videos) {
+        const rect = v.getBoundingClientRect();
+        const area = rect.width * rect.height;
+        if (area > maxArea) {
+          maxArea = area;
+          video = v;
+        }
+      }
       debugLog("querySelector video:", video ? "found" : "NOT FOUND");
       if (video) {
         currentVideoElement = video;
