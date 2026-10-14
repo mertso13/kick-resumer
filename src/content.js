@@ -444,7 +444,9 @@ function processThumbnails() {
 }
 
 function injectVisualFeedback(linkElement, watchedSeconds) {
-  const durationElement = linkElement.querySelector(".top-1\\.5.left-1\\.5");
+  const durationElement = Array.from(linkElement.querySelectorAll("div")).find(
+    (element) => /^\d+:\d{2}(:\d{2})?$/.test(element.textContent.trim()),
+  );
   if (!durationElement) return;
 
   const totalSeconds = parseDurationToSeconds(durationElement.textContent);
@@ -455,10 +457,6 @@ function injectVisualFeedback(linkElement, watchedSeconds) {
   if (percentage > 95) {
     percentage = 100;
   }
-
-  const imageWrapper = linkElement.querySelector("div.relative.h-full.w-full");
-
-  if (!imageWrapper) return;
 
   const progressBar = document.createElement("div");
   progressBar.style.cssText = `
@@ -475,7 +473,7 @@ function injectVisualFeedback(linkElement, watchedSeconds) {
     transition: width 0.3s ease;
   `;
 
-  imageWrapper.appendChild(progressBar);
+  linkElement.appendChild(progressBar);
 }
 
 async function cleanupCache() {
